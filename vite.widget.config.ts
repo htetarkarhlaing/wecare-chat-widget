@@ -4,11 +4,12 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
+    emptyOutDir: false,
     lib: {
       entry: './src/widget.tsx',
       name: 'ChatWidget',
-      fileName: (format) => `chat-widget.${format}.js`,
-      formats: ['umd', 'es']
+      fileName: () => 'chat-widget.js',
+      formats: ['umd']
     },
     rollupOptions: {
       external: [],
