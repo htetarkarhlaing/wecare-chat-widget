@@ -12,6 +12,8 @@
 	"installCommand": "npm install",
 	"buildCommand": "npm run build && npx vite build --config vite.widget.config.ts",
 	"routes": [
+		{ "src": "/chat-widget\\.js", "dest": "/chat-widget.js" },
+		{ "src": "/chat-widget\\.css", "dest": "/chat-widget.css" },
 		{ "handle": "filesystem" },
 		{ "src": "/(.*)", "dest": "/index.html" }
 	]
