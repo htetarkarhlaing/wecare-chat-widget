@@ -4,9 +4,11 @@ interface UserInfoFormProps {
   onSubmit: (userInfo: { name: string; email: string; phone?: string; message?: string }) => void;
   loading?: boolean;
   error?: string;
+  primaryColor: string;
+  secondaryColor: string;
 }
 
-export function UserInfoForm({ onSubmit, loading, error }: UserInfoFormProps) {
+export function UserInfoForm({ onSubmit, loading, error, primaryColor, secondaryColor }: UserInfoFormProps) {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -15,6 +17,7 @@ export function UserInfoForm({ onSubmit, loading, error }: UserInfoFormProps) {
   });
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [focusedField, setFocusedField] = useState<string | null>(null);
 
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {};
@@ -54,26 +57,113 @@ export function UserInfoForm({ onSubmit, loading, error }: UserInfoFormProps) {
     }
   };
 
+  const containerStyle: React.CSSProperties = {
+    padding: '20px 20px 24px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+    background: '#fff',
+  };
+
+  const introStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  };
+
+  const titleStyle: React.CSSProperties = {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 600,
+    color: '#0f172a',
+  };
+
+  const subtitleStyle: React.CSSProperties = {
+    margin: 0,
+    fontSize: 14,
+    color: '#475569',
+  };
+
+  const alertStyle: React.CSSProperties = {
+    padding: '10px 12px',
+    borderRadius: 12,
+    backgroundColor: '#fee2e2',
+    border: '1px solid #fecaca',
+    color: '#b91c1c',
+    fontSize: 13,
+  };
+
+  const formStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#0f172a',
+    marginBottom: 6,
+  };
+
+  const getFieldStyle = (field: string, isMultiline = false): React.CSSProperties => {
+    const hasError = Boolean(errors[field]);
+    const isFocused = focusedField === field;
+    const style: React.CSSProperties = {
+      width: '100%',
+      padding: '10px 12px',
+      borderRadius: 12,
+      border: `1px solid ${hasError ? '#f87171' : isFocused ? primaryColor : '#d1d5db'}`,
+      fontSize: 14,
+      lineHeight: 1.4,
+      outline: 'none',
+      transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+      boxShadow: isFocused ? `0 0 0 3px ${primaryColor}1f` : 'none',
+      backgroundColor: loading ? '#f8fafc' : '#fff',
+    };
+    if (isMultiline) {
+      style.minHeight = 90;
+      style.resize = 'none';
+    }
+    return style;
+  };
+
+  const buttonStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '12px 16px',
+    borderRadius: 12,
+    border: 'none',
+    fontSize: 15,
+    fontWeight: 600,
+    color: '#fff',
+    background: `linear-gradient(120deg, ${primaryColor}, ${secondaryColor})`,
+    cursor: loading ? 'not-allowed' : 'pointer',
+    opacity: loading ? 0.6 : 1,
+    boxShadow: '0 12px 24px rgba(15,23,42,0.12)',
+  };
+
+  const helperTextStyle: React.CSSProperties = {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#b91c1c',
+  };
+
   return (
-    <div className="p-4">
-      <div className="mb-4">
-        <h3 className="text-lg font-medium text-gray-900 mb-2">
-          Start a conversation
-        </h3>
-        <p className="text-sm text-gray-600">
-          Please provide your information to connect with our support team.
-        </p>
+    <div style={containerStyle}>
+      <div style={introStyle}>
+        <h3 style={titleStyle}>Start a conversation</h3>
+        <p style={subtitleStyle}>Please provide your information to connect with our support team.</p>
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-          <p className="text-sm text-red-600">{error}</p>
+        <div style={alertStyle}>
+          <p style={{ margin: 0 }}>{error}</p>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} style={formStyle}>
         <div>
-          <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="name" style={labelStyle}>
             Name *
           </label>
           <input
@@ -81,17 +171,17 @@ export function UserInfoForm({ onSubmit, loading, error }: UserInfoFormProps) {
             id="name"
             value={formData.name}
             onChange={handleChange('name')}
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              errors.name ? 'border-red-300 focus:ring-red-500' : 'border-gray-300'
-            }`}
+            onFocus={() => setFocusedField('name')}
+            onBlur={() => setFocusedField(null)}
             placeholder="Enter your full name"
             disabled={loading}
+            style={getFieldStyle('name')}
           />
-          {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name}</p>}
+          {errors.name && <p style={helperTextStyle}>{errors.name}</p>}
         </div>
 
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="email" style={labelStyle}>
             Email *
           </label>
           <input
@@ -99,17 +189,17 @@ export function UserInfoForm({ onSubmit, loading, error }: UserInfoFormProps) {
             id="email"
             value={formData.email}
             onChange={handleChange('email')}
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              errors.email ? 'border-red-300 focus:ring-red-500' : 'border-gray-300'
-            }`}
+            onFocus={() => setFocusedField('email')}
+            onBlur={() => setFocusedField(null)}
             placeholder="Enter your email address"
             disabled={loading}
+            style={getFieldStyle('email')}
           />
-          {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
+          {errors.email && <p style={helperTextStyle}>{errors.email}</p>}
         </div>
 
         <div>
-          <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="phone" style={labelStyle}>
             Phone (Optional)
           </label>
           <input
@@ -117,36 +207,32 @@ export function UserInfoForm({ onSubmit, loading, error }: UserInfoFormProps) {
             id="phone"
             value={formData.phone}
             onChange={handleChange('phone')}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onFocus={() => setFocusedField('phone')}
+            onBlur={() => setFocusedField(null)}
             placeholder="Enter your phone number"
             disabled={loading}
+            style={getFieldStyle('phone')}
           />
         </div>
 
         <div>
-          <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="message" style={labelStyle}>
             Initial Message (Optional)
           </label>
           <textarea
             id="message"
             value={formData.message}
             onChange={handleChange('message')}
+            onFocus={() => setFocusedField('message')}
+            onBlur={() => setFocusedField(null)}
             rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             placeholder="How can we help you today?"
             disabled={loading}
+            style={getFieldStyle('message', true)}
           />
         </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className={`w-full py-2 px-4 rounded-md text-white font-medium transition-colors ${
-            loading
-              ? 'bg-gray-400 cursor-not-allowed'
-              : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2'
-          }`}
-        >
+        <button type="submit" disabled={loading} style={buttonStyle}>
           {loading ? 'Starting chat...' : 'Start Chat'}
         </button>
       </form>

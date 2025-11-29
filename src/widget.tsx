@@ -3,7 +3,6 @@ import { Provider } from "react-redux";
 import { ChatWidget } from "./components/ChatWidget";
 import type { ChatConfig, ChatLocale } from "./types/chat";
 import { createChatStore, type AppStore } from "./store";
-import widgetStylesHref from "./index.css?url";
 
 // Global interface for the widget
 declare global {
@@ -17,18 +16,6 @@ declare global {
 
 let currentRoot: ReturnType<typeof createRoot> | null = null;
 let currentStore: AppStore | null = null;
-let stylesInjected = false;
-
-const ensureStyles = () => {
-	if (stylesInjected || typeof document === "undefined") return;
-	const link = document.createElement("link");
-	link.id = "wecare-chat-widget-styles";
-	link.rel = "stylesheet";
-	link.href = widgetStylesHref;
-	document.head.appendChild(link);
-	stylesInjected = true;
-};
-
 // Widget API
 window.ChatWidget = {
 	init: (config: ChatConfig) => {
@@ -42,7 +29,6 @@ window.ChatWidget = {
 		container.id = "chat-widget-container";
 
 		document.body.appendChild(container);
-		ensureStyles();
 
 		// Create React root and render
 		currentStore = createChatStore();
