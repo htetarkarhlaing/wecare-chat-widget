@@ -10,6 +10,8 @@ Embeddable customer-support chat widget built with **React 19**, **Vite**, **Typ
 - 🧩 Redux Toolkit store for predictable state management
 - ⛶ One-click fullscreen mode for focused conversations
 - 🧪 Playground UI (home page) to explore configuration options
+- 🔐 Session-token persistence so visitors can resume conversations without re-entering info
+- ⭐️ Built-in post-chat rating + optional feedback capture
 
 ## Getting Started
 
@@ -81,6 +83,28 @@ All widget UI + network state is handled by `Redux Toolkit`. If you embed the wi
 - `npm run preview`: Serve build artifacts locally
 
 The playground home page doubles as living documentation—adjust the config form, verify behavior live, and copy the generated `<script>` snippet straight into your host site.
+
+## Post-Chat Feedback Flow
+
+1. **Session bootstrap** – the backend now returns both `sessionId` and `sessionToken`. The widget stores this token locally (scoped per browser) and automatically resumes the conversation, including full history, after refreshes.
+2. **Secure messaging** – every session REST request (`GET /widget/chat/session/:id`, `POST /widget/chat/message`, `POST /widget/chat/session/:id/rating`) and the consumer Socket.IO `joinConversation` event attach `x-session-token` so only the initiating visitor can read/send data.
+3. **Rating UX** – visitors can end any active chat via “End chat & leave a rating,” or they are prompted automatically once the conversation is closed by an agent. Ratings (1–5 stars) plus optional text feed `/widget/chat/session/:id/rating`, which resolves the conversation and broadcasts updates back to the partner dashboard.
+4. **Success + reset** – after submitting feedback, the widget shows a thank-you state with a “Start a new conversation” CTA that clears local session storage.
+
+## Testing Checklist
+
+### Widget
+
+- Start a new chat, reload the page, and verify the session + history resume automatically (network requests should include `x-session-token`).
+- Exchange consumer ↔ agent messages and confirm they continue to stream live through Socket.IO after a reload.
+- Trigger “End chat & leave a rating,” submit stars + feedback, and ensure the thank-you state appears and the conversation switches to a non-active status on the partner dashboard.
+- Attempt to fetch/send messages after manually clearing `localStorage` to confirm the widget falls back to the user-info form.
+
+### Partner Dashboard
+
+- Load `/dashboard/chat`, confirm the conversation list populates via Redux + REST, and that selecting a conversation fetches detail history.
+- Send an agent reply and watch it appear immediately in both the list preview and detail pane while Socket.IO listeners run.
+- Close a conversation in the backend (or after a rating) and refresh the dashboard to ensure rating stars + feedback snippets render in the header/list.
 
 ## Environment Variables
 

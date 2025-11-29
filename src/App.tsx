@@ -4,7 +4,7 @@ import type { ChatConfig } from './types/chat'
 import './App.css'
 
 const buildDefaultConfig = (): ChatConfig => ({
-  apiKey: 'demo-api-key-12345',
+  apiKey: 'VENDOR1-API-KEY',
   locale: 'en',
   theme: {
     primaryColor: '#3b82f6',
@@ -40,7 +40,7 @@ function App() {
       .map(([key, value]) => `  ${key}="${value}"`)
       .join('\n')
 
-    return `<script src="https://your-domain.com/chat-widget.js"\n  data-chat-widget\n${renderedAttrs}\n></script>`
+    return `<script src="https://wecare-chat-widget.vercel.app/chat-widget.js"\n  data-chat-widget\n${renderedAttrs}\n></script>`
   }, [config])
 
   const handleReset = () => setConfig(buildDefaultConfig())

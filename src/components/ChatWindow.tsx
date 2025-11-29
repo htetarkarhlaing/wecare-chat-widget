@@ -19,6 +19,20 @@ type ConversationSocketPayload = {
   message: ChatApiMessage;
 };
 
+const SESSION_STORAGE_KEY = 'wecare_widget_session';
+
+type StoredSession = {
+  sessionId: string;
+  sessionToken: string;
+  createdAt: number;
+};
+
+type RatingSummary = {
+  rating: number;
+  feedback?: string | null;
+  ratedAt?: string | null;
+};
+
 const mapApiMessageToChat = (
   apiMessage: ChatApiMessage | ChatSession['messages'][number],
 ): Message => {
@@ -272,7 +286,15 @@ export function ChatWindow({ isOpen, onClose, config, primaryColor, secondaryCol
   const [sessionStarted, setSessionStarted] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionError, setSessionError] = useState<string>();
-  const [sessionId, setSessionId] = useState<string>();
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<ChatSession['status'] | null>(null);
+  const [showRatingForm, setShowRatingForm] = useState(false);
+  const [ratingValue, setRatingValue] = useState(5);
+  const [ratingNote, setRatingNote] = useState('');
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
+  const [ratingResponse, setRatingResponse] = useState<RatingSummary | null>(null);
+  const [ratingError, setRatingError] = useState<string>();
   const dispatch = useAppDispatch();
   const messages = useAppSelector((state) => state.chat.messages);
   const agentInfo = useAppSelector((state) => state.chat.agentInfo);
@@ -285,6 +307,67 @@ export function ChatWindow({ isOpen, onClose, config, primaryColor, secondaryCol
     () => new ChatApiService(config.apiKey, config.apiBaseUrl, config.locale),
     [config.apiKey, config.apiBaseUrl, config.locale]
   );
+
+  React.useEffect(() => {
+    chatApiService.setSessionToken(sessionToken || undefined);
+  }, [chatApiService, sessionToken]);
+
+  React.useEffect(() => {
+    if (sessionStatus && sessionStatus !== 'ACTIVE' && !ratingResponse) {
+      setShowRatingForm(true);
+    }
+  }, [sessionStatus, ratingResponse]);
+
+  const persistSession = React.useCallback(
+    (id: string, token: string) => {
+      if (typeof window === 'undefined') return;
+      const payload: StoredSession = {
+        sessionId: id,
+        sessionToken: token,
+        createdAt: Date.now(),
+      };
+      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(payload));
+    },
+    []
+  );
+
+  const clearPersistedSession = React.useCallback(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.removeItem(SESSION_STORAGE_KEY);
+  }, []);
+
+  const clearSessionState = React.useCallback(() => {
+    setSessionStarted(false);
+    setSessionId(null);
+    setSessionToken(null);
+    setSessionStatus(null);
+    setShowRatingForm(false);
+    setRatingValue(5);
+    setRatingNote('');
+    setRatingResponse(null);
+    setRatingError(undefined);
+    setRatingSubmitting(false);
+    dispatch(setMessagesAction([]));
+    dispatch(setAgentInfoAction(undefined));
+    clearPersistedSession();
+  }, [clearPersistedSession, dispatch]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored) as StoredSession;
+      if (parsed.sessionId && parsed.sessionToken) {
+        setSessionId(parsed.sessionId);
+        setSessionToken(parsed.sessionToken);
+        setSessionStarted(true);
+      }
+    } catch (error) {
+      console.warn('Failed to restore chat session', error);
+      clearPersistedSession();
+    }
+  }, [clearPersistedSession]);
 
   const toggleFullscreen = () => {
     dispatch(setFullscreenAction(!isFullscreen));
@@ -304,41 +387,58 @@ export function ChatWindow({ isOpen, onClose, config, primaryColor, secondaryCol
   }, [messages]);
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !sessionToken) return;
     let active = true;
 
     chatApiService
       .getSession(sessionId)
       .then((session) => {
         if (!active) return;
+        setSessionStatus(session.status);
         if (session.assignedUser) {
           dispatch(
             setAgentInfoAction({ name: session.assignedUser.name, status: 'online' }),
           );
         }
+        if (typeof session.rating === 'number') {
+          setRatingResponse({
+            rating: session.rating,
+            feedback: session.feedback ?? null,
+            ratedAt: session.ratedAt ?? null,
+          });
+          setShowRatingForm(false);
+        } else {
+          setRatingResponse(null);
+        }
         const history = session.messages.map(mapApiMessageToChat);
         dispatch(mergeHistoryAction(history));
+        setSessionError(undefined);
       })
-      .catch(() => {
-        /* swallow */
+      .catch((error) => {
+        if (!active) return;
+        console.error('Failed to load chat session', error);
+        setSessionError('Your session expired. Please start a new conversation.');
+        clearSessionState();
       });
 
     return () => {
       active = false;
     };
-  }, [sessionId, chatApiService, dispatch]);
+  }, [sessionId, sessionToken, chatApiService, dispatch, clearSessionState]);
 
   useEffect(() => {
-    if (!sessionId || !config.socketUrl) return;
+    if (!sessionId || !sessionToken || !config.socketUrl) return;
 
     const socket = io(config.socketUrl, {
       transports: ['websocket'],
     });
     socketRef.current = socket;
 
+    const joinPayload = { conversationId: sessionId, sessionToken };
+
     const handleConnect = () => {
       dispatch(setConnectedAction(true));
-      socket.emit('joinConversation', { conversationId: sessionId });
+      socket.emit('joinConversation', joinPayload);
     };
 
     socket.on('connect', handleConnect);
@@ -349,13 +449,17 @@ export function ChatWindow({ isOpen, onClose, config, primaryColor, secondaryCol
       dispatch(addMessageAction(mapped));
     });
 
+    if (socket.connected) {
+      socket.emit('joinConversation', joinPayload);
+    }
+
     return () => {
       socket.off('connect', handleConnect);
       socket.disconnect();
       socketRef.current = null;
       dispatch(setConnectedAction(false));
     };
-  }, [sessionId, config.socketUrl, dispatch]);
+  }, [sessionId, sessionToken, config.socketUrl, dispatch]);
 
   const startSession = async (userInfo: { name: string; email: string; phone?: string; message?: string }) => {
     try {
@@ -365,6 +469,13 @@ export function ChatWindow({ isOpen, onClose, config, primaryColor, secondaryCol
       const response = await chatApiService.createSession(userInfo);
       
       setSessionId(response.sessionId);
+      setSessionToken(response.sessionToken);
+      setSessionStatus('ACTIVE');
+      setShowRatingForm(false);
+      setRatingResponse(null);
+      setRatingValue(5);
+      setRatingNote('');
+      persistSession(response.sessionId, response.sessionToken);
       dispatch(
         setAgentInfoAction({
           name: response.assignedAgent.name,
@@ -405,8 +516,8 @@ export function ChatWindow({ isOpen, onClose, config, primaryColor, secondaryCol
   };
 
   const sendMessage = async (text: string) => {
-    if (!sessionId) {
-      console.error('Cannot send message: No active session');
+    if (!sessionId || !sessionToken) {
+      console.error('Cannot send message: No active session token');
       return;
     }
 
@@ -444,6 +555,46 @@ export function ChatWindow({ isOpen, onClose, config, primaryColor, secondaryCol
       );
     }
   };
+
+  const submitRating = async () => {
+    if (!sessionId || !sessionToken || !ratingValue) {
+      return;
+    }
+
+    setRatingSubmitting(true);
+    setRatingError(undefined);
+
+    try {
+      const response = await chatApiService.submitRating(sessionId, {
+        rating: ratingValue,
+        feedback: ratingNote.trim() || undefined,
+      });
+
+      setRatingResponse({
+        rating: response.rating,
+        feedback: response.feedback ?? null,
+        ratedAt: response.ratedAt ?? null,
+      });
+      setSessionStatus(response.status);
+      setShowRatingForm(false);
+    } catch (error) {
+      console.error('Failed to submit rating', error);
+      setRatingError('Failed to submit rating. Please try again.');
+    } finally {
+      setRatingSubmitting(false);
+    }
+  };
+
+  const handleStartNewChat = () => {
+    setSessionError(undefined);
+    clearSessionState();
+  };
+
+  const ratingStars = [1, 2, 3, 4, 5];
+  const hasSubmittedRating = Boolean(ratingResponse);
+  const canSendMessages = sessionStatus === 'ACTIVE' && !showRatingForm && !hasSubmittedRating;
+  const shouldShowRatingPanel =
+    showRatingForm || hasSubmittedRating || Boolean(sessionStatus && sessionStatus !== 'ACTIVE' && !ratingResponse);
 
   if (!isOpen) return null;
 
@@ -519,14 +670,191 @@ export function ChatWindow({ isOpen, onClose, config, primaryColor, secondaryCol
               ))}
               <div ref={messagesEndRef} />
             </div>
-
-            <ChatInput
-              onSendMessage={sendMessage}
-              disabled={!sessionId}
-              placeholder={config.labels?.placeholder || 'Type your message...'}
-              sendLabel={config.labels?.sendButton || 'Send'}
-              primaryColor={primaryColor}
-            />
+            {shouldShowRatingPanel ? (
+              <div
+                style={{
+                  padding: '18px 16px 20px',
+                  borderTop: '1px solid #e5e7eb',
+                  backgroundColor: '#fff',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                }}
+              >
+                {hasSubmittedRating && ratingResponse ? (
+                  <>
+                    <div>
+                      <p style={{ margin: 0, fontWeight: 600, color: '#0f172a' }}>Thank you for your feedback!</p>
+                      <p style={{ margin: '4px 0 0', color: '#475569', fontSize: 14 }}>
+                        Here’s a recap of the rating you shared.
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {ratingStars.map((value) => (
+                        <span
+                          key={`submitted-star-${value}`}
+                          style={{
+                            fontSize: 24,
+                            color: value <= (ratingResponse?.rating || 0) ? '#f59e0b' : '#e2e8f0',
+                          }}
+                        >
+                          ★
+                        </span>
+                      ))}
+                    </div>
+                    {ratingResponse.feedback && (
+                      <blockquote
+                        style={{
+                          margin: 0,
+                          padding: '12px 14px',
+                          borderRadius: 12,
+                          backgroundColor: '#f8fafc',
+                          fontStyle: 'italic',
+                          color: '#334155',
+                        }}
+                      >
+                        “{ratingResponse.feedback}”
+                      </blockquote>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleStartNewChat}
+                      style={{
+                        marginTop: 4,
+                        alignSelf: 'flex-start',
+                        padding: '10px 16px',
+                        borderRadius: 999,
+                        border: '1px solid #e2e8f0',
+                        backgroundColor: '#0f172a',
+                        color: '#fff',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Start a new conversation
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <p style={{ margin: 0, fontWeight: 600, color: '#0f172a' }}>Rate your experience</p>
+                      <p style={{ margin: '4px 0 0', color: '#475569', fontSize: 14 }}>
+                        Tell us how the conversation went. Your feedback helps us improve.
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {ratingStars.map((value) => (
+                        <button
+                          key={`star-${value}`}
+                          type="button"
+                          onClick={() => setRatingValue(value)}
+                          style={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: 12,
+                            border: '1px solid ' + (value <= ratingValue ? primaryColor : '#e2e8f0'),
+                            backgroundColor: value <= ratingValue ? `${primaryColor}15` : '#fff',
+                            color: value <= ratingValue ? '#f59e0b' : '#cbd5f5',
+                            fontSize: 22,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {value <= ratingValue ? '★' : '☆'}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      value={ratingNote}
+                      onChange={(e) => setRatingNote(e.target.value)}
+                      placeholder="Share additional feedback (optional)"
+                      rows={3}
+                      style={{
+                        width: '100%',
+                        borderRadius: 12,
+                        border: '1px solid #e2e8f0',
+                        padding: '10px 12px',
+                        fontSize: 14,
+                        resize: 'none',
+                        outline: 'none',
+                        fontFamily: 'inherit',
+                      }}
+                    />
+                    {ratingError && (
+                      <p style={{ margin: 0, color: '#b91c1c', fontSize: 13 }}>{ratingError}</p>
+                    )}
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                      {sessionStatus === 'ACTIVE' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowRatingForm(false);
+                            setRatingError(undefined);
+                          }}
+                          style={{
+                            padding: '10px 16px',
+                            borderRadius: 999,
+                            border: '1px solid #e2e8f0',
+                            backgroundColor: '#fff',
+                            color: '#0f172a',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Back to chat
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={submitRating}
+                        disabled={ratingSubmitting}
+                        style={{
+                          padding: '10px 18px',
+                          borderRadius: 999,
+                          border: 'none',
+                          background: `linear-gradient(120deg, ${primaryColor}, ${secondaryColor})`,
+                          color: '#fff',
+                          fontWeight: 600,
+                          cursor: ratingSubmitting ? 'not-allowed' : 'pointer',
+                          opacity: ratingSubmitting ? 0.7 : 1,
+                        }}
+                      >
+                        {ratingSubmitting ? 'Sending...' : 'Submit rating'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <>
+                <ChatInput
+                  onSendMessage={sendMessage}
+                  disabled={!sessionId || !sessionToken || !canSendMessages}
+                  placeholder={config.labels?.placeholder || 'Type your message...'}
+                  sendLabel={config.labels?.sendButton || 'Send'}
+                  primaryColor={primaryColor}
+                />
+                {sessionStatus === 'ACTIVE' && (
+                  <div style={{ padding: '0 16px 16px', textAlign: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowRatingForm(true);
+                        setRatingError(undefined);
+                      }}
+                      style={{
+                        border: 'none',
+                        background: 'none',
+                        color: primaryColor,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      End chat & leave a rating
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </>
         )}
       </div>
