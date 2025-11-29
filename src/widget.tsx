@@ -3,7 +3,7 @@ import { Provider } from "react-redux";
 import { ChatWidget } from "./components/ChatWidget";
 import type { ChatConfig, ChatLocale } from "./types/chat";
 import { createChatStore, type AppStore } from "./store";
-import baseStyles from "./index.css?inline";
+import widgetStylesHref from "./index.css?url";
 
 // Global interface for the widget
 declare global {
@@ -21,10 +21,11 @@ let stylesInjected = false;
 
 const ensureStyles = () => {
 	if (stylesInjected || typeof document === "undefined") return;
-	const style = document.createElement("style");
-	style.id = "wecare-chat-widget-styles";
-	style.textContent = baseStyles;
-	document.head.appendChild(style);
+	const link = document.createElement("link");
+	link.id = "wecare-chat-widget-styles";
+	link.rel = "stylesheet";
+	link.href = widgetStylesHref;
+	document.head.appendChild(link);
 	stylesInjected = true;
 };
 
