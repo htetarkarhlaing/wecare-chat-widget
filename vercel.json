@@ -1,16 +1,8 @@
 {
 	"version": 2,
-	"builds": [
-		{
-			"src": "package.json",
-			"use": "@vercel/static-build",
-			"config": {
-				"distDir": "dist"
-			}
-		}
-	],
 	"installCommand": "npm install",
 	"buildCommand": "npm run build && npx vite build --config vite.widget.config.ts",
+	"outputDirectory": "dist",
 	"routes": [
 		{ "src": "/chat-widget\\.js", "dest": "/chat-widget.js" },
 		{ "src": "/chat-widget\\.css", "dest": "/chat-widget.css" },
