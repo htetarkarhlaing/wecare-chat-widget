@@ -235,6 +235,11 @@ const windowBodyStyle: React.CSSProperties = {
   backgroundColor: '#fff',
 };
 
+const formWrapperStyle: React.CSSProperties = {
+  flex: 1,
+  overflowY: 'auto',
+};
+
 const messageListStyle: React.CSSProperties = {
   flex: 1,
   overflowY: 'auto',
@@ -497,13 +502,15 @@ export function ChatWindow({ isOpen, onClose, config, primaryColor, secondaryCol
 
       <div style={windowBodyStyle}>
         {!sessionStarted ? (
-          <UserInfoForm
-            onSubmit={startSession}
-            loading={sessionLoading}
-            error={sessionError}
-            primaryColor={primaryColor}
-            secondaryColor={secondaryColor}
-          />
+          <div style={formWrapperStyle}>
+            <UserInfoForm
+              onSubmit={startSession}
+              loading={sessionLoading}
+              error={sessionError}
+              primaryColor={primaryColor}
+              secondaryColor={secondaryColor}
+            />
+          </div>
         ) : (
           <>
             <div style={messageListStyle}>
